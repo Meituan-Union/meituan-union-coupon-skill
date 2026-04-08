@@ -16,7 +16,7 @@ description: >
 metadata:
   skillhub.creator: "lidongliang04"
   skillhub.updater: "lidongliang04"
-  skillhub.version: "V5"
+  skillhub.version: "V7"
   skillhub.source: "FRIDAY Skillhub"
   skillhub.skill_id: "27369"
   skillhub.high_sensitive: "false"
@@ -48,6 +48,7 @@ metadata:
 - 含「查记录/查历史/领了什么/领过什么/我的券/已领」→ 执行查询历史记录流程
 - 含「取消提醒/关闭提醒/几点提醒/改成X点/提醒时间」→ 执行定时提醒管理
 - 含「退出登录/切换账号/清除设备/重置设备」→ 执行账号管理流程
+- 含「查看协议/查看服务协议/查看使用规则/查看隐私政策/Skills服务使用规则/美团用户服务协议/隐私政策」→ 执行查看协议流程
 
 **第一关**：含「领券/领红包/领优惠/省钱/福利/羊毛/美团红包/专属红包/超级红包/大额券/神券/隐藏券」等利益词，或含「活动/今日活动/今天有什么活动/优惠活动/打折/上新」等活动词 + 关联到美团或美团覆盖的品类（外卖/到店/酒旅/生活美业/休闲娱乐/超市买菜）？
 → 是 → 【明确意图】直接执行领券流程，无需询问
@@ -67,22 +68,23 @@ metadata:
 ---
 
 ## 环境准备
-
 **SKILL_DIR 路径：**
-- Windows（PowerShell）：`"$env:USERPROFILE\.catpaw\skills\meituan-fenxiao-promotion-coupon"`
-- Linux / macOS：`~/.catpaw/skills/meituan-fenxiao-promotion-coupon`
+- Linux / Agent（OpenClaw 沙箱）：`${CLAUDE_CONFIG_DIR:-${XIAOMEI_CLAUDE_CONFIG_DIR:-~/.claude}}/skills/meituan-fenxiao-promotion-coupon`
+- macOS：同上
+- Windows（Git Bash）：`$(cygpath "$APPDATA")/xiaomei-cowork/Claude/skills/meituan-fenxiao-promotion-coupon`
 
 **Python 路径：**
-- Windows（PowerShell）：`"$env:APPDATA\xiaomei-cowork\Python311\python\python.exe"`
-- Linux / macOS：`python3`
+- Linux / Agent：`python3`
+- macOS：`~/Library/Application\ Support/xiaomei-cowork/Python311/python/bin/python3`
+- Windows：`"$(cygpath "$APPDATA")/xiaomei-cowork/Python311/python/python.exe"`
 
-```powershell
-# Windows PowerShell 示例（其他平台替换 PYTHON 和 SKILL_DIR 即可）
-$PYTHON = "$env:APPDATA\xiaomei-cowork\Python311\python\python.exe"
-$SKILL_DIR = "$env:USERPROFILE\.catpaw\skills\meituan-fenxiao-promotion-coupon"
-$AUTH_SCRIPT = "$SKILL_DIR\scripts\auth.py"
-$ISSUE_SCRIPT = "$SKILL_DIR\scripts\issue.py"
-$env:FENXIAO_COUPON_HISTORY_FILE = "$env:TEMP\meituan-fenxiao-promotion-coupon_history.json"
+```bash
+# 以 Linux 为例（其他平台替换 PYTHON 和 SKILL_DIR 即可）
+PYTHON=python3
+SKILL_DIR="${CLAUDE_CONFIG_DIR:-${XIAOMEI_CLAUDE_CONFIG_DIR:-~/.claude}}/skills/meituan-fenxiao-promotion-coupon"
+AUTH_SCRIPT="$SKILL_DIR/scripts/auth.py"
+ISSUE_SCRIPT="$SKILL_DIR/scripts/issue.py"
+export HUISHENG_COUPON_HISTORY_FILE=/tmp/meituan-fenxiao-promotion-coupon_history.json
 ```
 
 ---
@@ -107,13 +109,13 @@ $env:FENXIAO_COUPON_HISTORY_FILE = "$env:TEMP\meituan-fenxiao-promotion-coupon_h
 紧接欢迎语后输出以下内容，并等待用户回复：
 
 ```
-继续使用即代表您已充分理解并同意《Skills服务使用规则》以及《美团用户服务协议》《隐私政策》的全部内容，且自愿接受该等规则约束。
-
+继续使用即代表您已充分理解并同意[《Skills服务使用规则》](references/terms-of-service.md)以及[《美团用户服务协议》](https://rules-center.meituan.com/rule-detail/4/1)、[《隐私政策》](https://rules-center.meituan.com/m/detail/guize/2)的全部内容，且自愿接受该等规则约束。
 请回复「同意」继续，或回复「不同意」退出。
 ```
 
 - 用户回复「同意」/「好」/「ok」/「确认」/「继续」等正向词 → 将 `terms_accepted=true` 标记写入本次对话上下文，进入 Step 1
 - 用户回复「不同意」/「拒绝」/「退出」等 → 回复「好的，如需使用随时告诉我 😊」，终止流程
+- 用户回复「查看协议」「查看Skills服务使用规则」「查看美团用户服务协议」或「查看隐私政策」等 ->  执行下方《查看协议》章节的处理流程
 
 ---
 
@@ -362,6 +364,32 @@ $ISSUE_RESULT = & $PYTHON "$ISSUE_SCRIPT" --token "$USER_TOKEN"
 - 同时清除 `device_token`、`user_token` 和 `phone_masked`
 - 成功后提示：「设备标识已清除，下次登录将重新绑定新的设备标识。」
 - 执行后用户需重新登录才能使用
+
+---
+
+## 📄 查看协议
+
+**触发条件**：用户在任意时刻明确要求查看协议内容，包括但不限于：「查看协议」「查看Skills服务使用规则」「查看美团用户服务协议」「查看隐私政策」「协议内容是什么」等。
+
+> ⚠️ **强制约束**：
+> 1. 只允许展示以下三个协议，**严禁 AI 自行编造、改写或补充任何协议内容**。
+> 2. 《Skills服务使用规则》必须读取本地文件后原样展示，不得凭记忆输出。
+> 3. 《美团用户服务协议》和《隐私政策》只提供链接，不得自行编造正文内容。
+
+### 三个协议的处理方式
+
+| 协议名称 | 处理方式 |
+|---------|----------|
+| 《Skills服务使用规则》 | 读取当前skill目录下 `/references/terms-of-service.md` 文件，将文件内容**原样**展示给用户，不得增删改写 |
+| 《美团用户服务协议》 | 展示链接：https://rules-center.meituan.com/rule-detail/4/1 ，告知用户点击链接查看完整内容 |
+| 《隐私政策》 | 展示链接：https://rules-center.meituan.com/m/detail/guize/2 ，告知用户点击链接查看完整内容 |
+
+
+**展示格式：**
+- 用户请求「查看Skills服务使用规则」→ 执行上述命令读取文件，将文件内容原样输出
+- 用户请求「查看美团用户服务协议」→ 输出：「请点击以下链接查看《美团用户服务协议》完整内容：https://rules-center.meituan.com/rule-detail/4/1」
+- 用户请求「查看隐私政策」→ 输出：「请点击以下链接查看《隐私政策》完整内容：https://rules-center.meituan.com/m/detail/guize/2」
+- 用户请求「查看全部协议」或未指定具体协议 → 依次展示上述三个协议的对应内容
 
 ---
 
